@@ -1,0 +1,5 @@
+scRNAseq.code-workspace
+**/.vscode
+**/*.h5ad
+**/__pycache__/
+**/data
