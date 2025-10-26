@@ -37,7 +37,7 @@ def setup_output_directory(flag: bool, directory: str | Path | None, item_name: 
 def Run_Normalization(
         adata: ad.AnnData,
         sample: str,
-        batch: str | None,
+        batch: str | None = None,
         n_neighbors: int = 50,
         n_pcs: int = 50,
         n_top_genes: int = 3000,
@@ -101,7 +101,7 @@ def Run_Normalization(
     if fig_flag:
         sc.pl.highly_variable_genes(adata)
         high_var_path = fig_dir / f"{sample}_{resolution}_{n_top_genes}-high_variable_genes.png"
-        plt.savefig(high_var_path,bbox_inches="tight")
+        plt.savefig(high_var_path,dpi=300,bbox_inches="tight")
         plt.close()
     
     adata = adata[:, adata.var.highly_variable].copy()

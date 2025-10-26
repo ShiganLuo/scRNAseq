@@ -35,15 +35,42 @@ def is_outlier(adata, metric: str, nmads: int):
     )
     return outlier
 
+def slice_anndata(adata, obs_mask=None, var_mask=None):
+    """
+    Slice an AnnData object and automatically update all layers to match the new shape.
+    Supports both pandas Series and numpy arrays for obs_mask and var_mask.
+    """
+
+    # Default: select all columns if var_mask is None
+    if var_mask is None:
+        var_mask = slice(None) # slice == :
+    else:
+        var_mask = np.asarray(var_mask,dtype=bool)
+    if obs_mask is None:
+        obs_mask = slice(None)
+    else:
+        obs_mask = np.asarray(obs_mask, dtype=bool)
+
+    # adata[["Cell_1", "Cell_10"], ["Gene_5", "Gene_1900"]]
+    adata_new = adata[obs_mask, var_mask].copy()
+
+    # Synchronize layers
+    for layer_name, mat in adata.layers.items():
+        new_mat = mat[obs_mask, var_mask].copy()
+        adata_new.layers[layer_name] = new_mat
+
+    return adata_new
+
 def lowquality(
     adata: ad.AnnData,
     sample: str,
     low_count_outlier: int = 5,
     low_gene_outlier: int = 5,
     top20_outlier: int = 5,
-    mt_outlier: int = 3,
-    mt_cutoff: int = 8,
-    use_mt_outlier: bool = True,
+    mt_outlier: int | None  = 3,
+    mt_cutoff: int | None = 8,
+    n_genes_by_counts_cutoff: tuple[int,int] | None = (200,9999999),
+    total_counts_cutoff: tuple[int,int] | None = (500,9999999),
     fig_flag: bool = False,
     fig_dir: str | None = None
 ) -> ad.AnnData:
@@ -106,35 +133,60 @@ def lowquality(
 
     logging.info(f"Number of cells originally: {adata.n_obs}")
     ### metrix caculate
-    adata.var["mt"] = adata.var_names.str.startswith("MT-")
-    adata.var["ribo"] = adata.var_names.str.startswith(("RPS", "RPL"))
-    adata.var["hb"] = adata.var_names.str.contains(("^HB[^(P)]"))
+    # human mitcondronial gene most start with MT-, but mouse's most start with mt-
+    adata.var["mt"] = adata.var_names.str.upper().str.startswith("MT-")
+    adata.var["ribo"] = adata.var_names.str.upper().str.startswith(("RPS", "RPL"))
+    adata.var["hb"] = adata.var_names.str.upper().str.match(r"^HB[^P]")
+
     sc.pp.calculate_qc_metrics(
     adata, qc_vars=["mt", "ribo", "hb"], inplace=True, percent_top=[20], log1p=True)
 
 
+    if n_genes_by_counts_cutoff is not None:
+        logging.info(f"n_genes_by_counts_cutoff is open: {n_genes_by_counts_cutoff}")
+        low, high = n_genes_by_counts_cutoff
+        before = adata.n_obs
+        adata = adata[(adata.obs["n_genes_by_counts"] > low) &
+                    (adata.obs["n_genes_by_counts"] < high)].copy()
+        logging.info(f"Filtered by n_genes_by_counts: {before} → {adata.n_obs}")
+    if total_counts_cutoff is not None:
+        logging.info(f"total_counts_cutoff is open: {total_counts_cutoff}")
+        low, high = total_counts_cutoff
+        before = adata.n_obs
+        adata = adata[(adata.obs["total_counts"] > low) &
+                    (adata.obs["total_counts"] < high)].copy()
+        logging.info(f"Filtered by total_counts: {before} → {adata.n_obs}")
+
+    logging.info(f"Number of cells after hard filtered: {adata.n_obs}")
     adata.obs["outlier"] = (
     is_outlier(adata, "log1p_total_counts", low_count_outlier)
     | is_outlier(adata, "log1p_n_genes_by_counts", low_gene_outlier)
     | is_outlier(adata, "pct_counts_in_top_20_genes", top20_outlier)
     )
-
-    if use_mt_outlier :
+    
+    if mt_outlier is not None and mt_cutoff is not None:
         adata.obs["mt_outlier"] = is_outlier(adata, "pct_counts_mt", mt_outlier) | (
         adata.obs["pct_counts_mt"] > mt_cutoff
         )
-    else:
+    elif mt_cutoff is not None:
         adata.obs["mt_outlier"] = adata.obs["pct_counts_mt"] > mt_cutoff
+    elif mt_outlier is not None:
+        adata.obs["mt_outlier"] = is_outlier(adata, "pct_counts_mt", mt_outlier)
+    else:
+        pass
     
-    adata_filter = adata[(~adata.obs.outlier) & (~adata.obs.mt_outlier)].copy()
-    logging.info(f"Number of cells after filtering of low quality cells: {adata_filter.n_obs}")
+
+    # adata_filter = adata[(~adata.obs.outlier) & (~adata.obs.mt_outlier)].copy()
+    obs_mask = ((~adata.obs.outlier) & (~adata.obs.mt_outlier))
+    adata_filtered = slice_anndata(adata,obs_mask)
+    logging.info(f"Number of cells after filtering of low quality cells: {adata_filtered.n_obs}")
 
     
     if fig_flag:
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         sns.histplot(adata.obs["total_counts"], bins=100, kde=False,ax=axes[0])
         axes[0].set_title("Before filtering")
-        sns.histplot(adata_filter.obs["total_counts"], bins=100, kde=False,ax=axes[1])
+        sns.histplot(adata_filtered.obs["total_counts"], bins=100, kde=False,ax=axes[1])
         axes[1].set_title("After filtering")
         total_counts_path = fig_dir / f"{sample}-total_counts.png"
         fig.savefig(total_counts_path,dpi=300, bbox_inches='tight')
@@ -143,7 +195,7 @@ def lowquality(
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         sc.pl.violin(adata, "pct_counts_mt",show=False,ax=axes[0])
         axes[0].set_title("Before filtering")
-        sc.pl.violin(adata_filter, "pct_counts_mt",show=False,ax=axes[1])
+        sc.pl.violin(adata_filtered, "pct_counts_mt",show=False,ax=axes[1])
         axes[1].set_title("After filtering")
         pct_counts_mt_path = fig_dir / f"{sample}-pct_counts_mt.png"
         plt.savefig(pct_counts_mt_path,dpi=300, bbox_inches='tight')
@@ -152,7 +204,7 @@ def lowquality(
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         sc.pl.scatter(adata, "total_counts", "n_genes_by_counts", color="pct_counts_mt",show=False,ax=axes[0])
         axes[0].set_title("Before filtering")
-        sc.pl.scatter(adata_filter, "total_counts", "n_genes_by_counts", color="pct_counts_mt",show=False,ax=axes[1])
+        sc.pl.scatter(adata_filtered, "total_counts", "n_genes_by_counts", color="pct_counts_mt",show=False,ax=axes[1])
         axes[1].set_title("After filtering")
         for ax in fig.axes[::-1]:
             if ax not in list(axes):
@@ -175,7 +227,7 @@ def lowquality(
         plt.savefig(tnp_path, dpi=300, bbox_inches='tight')
         plt.close(fig)
     logging.info(f"{sample}'s low quality cells filtering completed")
-    return adata
+    return adata_filtered 
 
 
 def setup_output_directory(flag: bool, directory: str | Path | None, item_name: str) -> Path | None:
@@ -266,7 +318,7 @@ def Doublet_scrub(
 
     counts_matrix = adata.to_df()
     n_cells = adata.shape[0]
-
+    logging.info(f"Number of cells originally: {adata.n_obs}")
     # initial Scrublet run with default expected rate (0.06)
     logging.info(f"initial Scrublet run with the expected rate {scrub_estimated_rate}")
     scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=scrub_estimated_rate,
@@ -307,8 +359,10 @@ def Doublet_scrub(
     # Add to AnnData and filter doublets
     adata.obs['doublet_scores'] = doublet_scores
     adata.obs['predicted_doublets'] = predicted_doublets
-    adata_filtered = adata[~adata.obs['predicted_doublets'], :]
-
+    obs_mask = ~adata.obs['predicted_doublets']
+    # adata_filtered = adata[~adata.obs['predicted_doublets']]
+    adata_filtered = slice_anndata(adata,obs_mask)
+    logging.info(f"Number of cells after filtering of low quality cells: {adata_filtered.n_obs}")
     logging.info("Doublet filtering completed.")
     return adata_filtered
 

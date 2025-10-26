@@ -8,12 +8,31 @@ import argparse
 from celltypist import models
 import anndata as ad
 import seaborn as sns
+from pathlib import Path
 import logging
 logging.basicConfig(
 	level=logging.INFO,
 	format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 	datefmt='%Y-%m-%d %H:%M:%S'
 )
+def setup_output_directory(flag: bool, directory: str | Path | None, item_name: str) -> Path | None:
+    if not flag:
+        logging.info(f"Don't save any {item_name}.")
+        return None
+    if directory is None:
+        raise ValueError(f"{item_name}_path must be provided if {item_name}_flag=True")
+    
+    output_path = Path(directory)
+    logging.info(f"Save {item_name} to {output_path}")
+
+    try:
+        output_path.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logging.error(f"Could not create {item_name} directory '{output_path}': {e}")
+        raise
+        
+    return output_path
+
 def Show_Markers(
         adata: ad.AnnData,
         fig_dir: str,
@@ -41,7 +60,8 @@ def Show_Markers(
     返回:
         ad.AnnData: 更新后的 AnnData 对象。
     """
-
+    fig_dir = setup_output_directory(fig_flag,fig_dir,"fig")
+    table_dir = setup_output_directory(True,table_dir,"table")
     # --- Step 1: 确保 raw 存在 ---
     if adata.raw is None:
         logging.warning("Warning: adata.raw is None, will set raw = adata.copy()")
@@ -50,7 +70,8 @@ def Show_Markers(
     # --- Step 2: 可选绘制 Leiden 相关性图 ---
     if fig_flag:
         sc.pl.correlation_matrix(adata, 'leiden', figsize=(5, 3.5), show=False)
-        plt.savefig(f"{fig_dir}/{out}-correlation.png", dpi=300)
+        correlation_path = fig_dir / f"{out}-correlation.png"
+        plt.savefig(correlation_path, dpi=300,bbox_inches="tight")
         plt.close()
 
     # --- Step 3: 差异分析 (基于 raw) ---
@@ -67,7 +88,8 @@ def Show_Markers(
 
     # 保存 top5 marker
     top5 = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(5)
-    top5.to_csv(f"{table_dir}/{out}-top5_markers.csv", index=False)
+    top5_path = table_dir / f"{out}-top5_markers.csv"
+    top5.to_csv(top5_path, index=False)
 
     # --- Step 4: 可选绘制 Top5 violin 图 ---
     if fig_flag:
@@ -81,7 +103,8 @@ def Show_Markers(
             )
             plt.tight_layout()
             plt.axis("off")
-            fig.savefig(f"{fig_dir}/top5-markers-{col}.png")
+            top5_markers_path = fig_dir / f"top5-markers-{col}.png"
+            fig.savefig(top5_markers_path,dpi=30,bbox_inches="tight")
             plt.close(fig)
 
     # --- Step 5: 数据标准化并存储 ---
@@ -111,7 +134,8 @@ def Show_Markers(
 
         for name, func in plots.items():
             func(adata, show=False, **plot_params[name])
-            plt.savefig(f"{fig_dir}/{out}-genes-{name}.png", dpi=300)
+            out_genes_name_path = fig_dir / f"{out}-genes-{name}.png"
+            plt.savefig(out_genes_name_path, dpi=300,bbox_inches="tight")
             plt.close()
 
     return adata
@@ -282,12 +306,10 @@ def handful_annotate(
     """
 
     # 检查输入数据
-    logging.info("Variable (genes):")
-    logging.info(adata.var.head())
-    logging.info("Observations (cells):")
-    logging.info(adata.obs.head())
+    logging.info(f"Variable (genes):{adata.n_vars}")
+    logging.info(f"Observations (cells):{adata.n_obs}")
+    fig_dir = setup_output_directory(True,fig_dir,"fig")
 
-    
     if adata.raw is None:
         print("Warning: adata.raw is None")
         # marker_genes_in_data = {
@@ -333,7 +355,8 @@ def handful_annotate(
         use_raw=True
     )
     plt.tight_layout()
-    plt.savefig(f"{fig_dir}/{out}-dot.png", dpi=300)
+    out_dot_path = fig_dir / f"{out}-dot.png"
+    plt.savefig(out_dot_path, dpi=300,bbox_inches="tight")
 
     # 绘制每个细胞类型的 marker 基因在 UMAP 上的分布
     for ct, genes in marker_genes_in_data.items():
@@ -352,7 +375,8 @@ def handful_annotate(
                 use_raw=True
             )
             plt.tight_layout()
-            plt.savefig(f"{fig_dir}/{out}-{ct}.png", dpi=300)
+            out_ct_path = fig_dir / f"{out}-{ct}.png"
+            plt.savefig(out_ct_path, dpi=300,bbox_inches="tight")
 
 
     return adata
@@ -363,7 +387,8 @@ def show_annotation(
     fig_dir:str,
     out:str
 ):
-    print("begin map cluster")
+    logging.info("begin map cluster")
+    fig_dir = setup_output_directory(True,fig_dir,"fig")
     adata.obs['celltype'] = adata.obs['leiden'].map(cluster2annotation).astype('category')
     # prepare for color map
     leiden_to_celltype = adata.obs.groupby('leiden')['celltype'].first().to_dict()
@@ -375,7 +400,8 @@ def show_annotation(
     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(15, 5), constrained_layout=True)
     sc.pl.umap(adata, color='leiden',palette=leiden_to_color, frameon=False, legend_loc="on data",size=8, ax=ax1, show=False)
     sc.pl.umap(adata, color='celltype',palette=celltype_to_color, frameon=False,size=10, ax=ax2, show=False)
-    fig.savefig(f"{fig_dir}/{out}-handfulann.png",dpi=300,bbox_inches="tight")    
+    out_handfulann_path = fig_dir / f"{out}-handfulann.png"
+    fig.savefig(out_handfulann_path,dpi=300,bbox_inches="tight")    
     plt.close(fig)
     logging.info("end map cluster")
     return adata

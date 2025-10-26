@@ -37,6 +37,7 @@ marker_genes_Intestine = {
     "Tuft": ["Avil", "Siglecf", "Pou2f3"],
     "Paneth": ["Lyz1", "Defa5", "Mmp7"],
     "Macrophage": ["Fcgr1", "Cd68", "Naaa","Lyz2"],
+    "Plasma cell": ["Jchain","Mzb1"],
     "Plasmacytoid dendritic cells": ["Irf8","Siglech","Bst2","Tcf4","Lin"] #https://www.rndsystems.com/resources/cell-markers/immune-cells/dendritic-cells/plasmacytoid-dendritic-cell-markers
 }
 marker_genes_Lung = {
@@ -88,17 +89,17 @@ marker_genes_Muscle = {
 Intestine_annotation = {
     "0": "T cytotoxic cell",
     "1": "T cytotoxic cell",
-    "2": "Enterocyte cell",
+    "2": "T cytotoxic cell",
     "3": "T cytotoxic cell",
     "4": "B cell",
-    "5": "Enteroendocrine cell",
-    "6": "Macrophage",
-    "7": "Plasmacytoid dendritic cells",
-    "8": "T cytotoxic cell",
-    "9": "Tuft",
+    "5": "Plasma cell",
+    "6": "Enterocyte cell",
+    "7": "Intestinal stem cell",
+    "8": "T cytotoxic cell", # to be determined
+    "9": "Macrophage",
     "10": "Enterocyte cell",
-    "11": "Enterocyte cell",
-    "12": "T cytotoxic cell",
+    "11": "Goblet",
+    "12": "Tuft"
 }
 Lung_annotation = {
     "0": "endothelial cells",
@@ -400,12 +401,12 @@ class readCombine:
                 # adata = scTERead(infile,sample)
                 adata = sc.read_h5ad(f"{indir}/{group}/{sample}.h5ad")
                 adata.obs['experiment'] = sample.split("-")[0]
-                if flag == 'w_h5ad_1':
-                    output_path = Path(f"{outdir}/{group}/{sample}.h5ad")
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    adata.write_h5ad(output_path)
                 adata_list.append(adata)
             adata = combine_group(adata_list)
+            if flag == 'w_h5ad_1':
+                output_path = Path(f"{outdir}/{group}/{group}_raw.h5ad")
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                adata.write_h5ad(output_path)
             self.__adataDict.update({group:adata})
         end = datetime.datetime.now()
         logging.info("start read scTE output and store in h5ad(optional) run time: "+str((end-start).seconds/3600)+"h")
@@ -432,8 +433,8 @@ class readCombine:
         outdir = self.outdir
         start = datetime.datetime.now()
         for group,adata in self.__adataDict.items():
-            adata = Run_Normalization(adata,group,batch='sample',fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
-            adata = Run_batchRemove(adata,group, batch=['sample'] ,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
+            adata = Run_Normalization(adata,group,batch='experiment',fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
+            adata = Run_batchRemove(adata,group, batch=['experiment'] ,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
             output_path = Path(f"{outdir}/{group}/{group}_class.h5ad")
             output_path.parent.mkdir(parents=True, exist_ok=True) # Create only missing directories
             adata.write_h5ad(output_path)
@@ -441,20 +442,123 @@ class readCombine:
         logging.info("start batch normalization and batch remove on combined adata run time:"+str((end-start).seconds/3600)+"h")
     
 
+def step2QCRun(adataDict:dict[str,ad.AnnData],
+               outdir:str):
+    logging.info("start qc on combined adata")
+    start = datetime.datetime.now()
+    for group,adata in adataDict.items():
+        if group == "Intestine":
+            # continue
+            adata = lowquality(adata,group,mt_cutoff=30,mt_outlier=25,low_count_outlier=5,low_gene_outlier=9,top20_outlier=5,
+                            fig_flag = True,fig_dir = f"{outdir}/{group}/QC")
+            adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.06,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
+                    table_flag=True,table_dir=f"{outdir}/{group}/doublet/table")
+        elif group == "Lung":
+            continue
+            adata = lowquality(adata,group,mt_cutoff=8,low_count_outlier=3,low_gene_outlier=3,top20_outlier=3,
+                            fig_flag = True,fig_dir = f"{outdir}/{group}/QC")
+            adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.06,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
+                    table_flag=True,table_dir=f"{outdir}/{group}/doublet/table")
+        elif group == "Muscle":
+            continue
+            adata = lowquality(adata,group,mt_cutoff=20,mt_outlier=80,low_count_outlier=10,low_gene_outlier=10,top20_outlier=10,
+                            n_genes_by_counts_cutoff=(200,99999999),total_counts_cutoff=(300,99999999),fig_flag = True,fig_dir = f"{outdir}/{group}/QC")
+            adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.06,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
+                    table_flag=True,table_dir=f"{outdir}/{group}/doublet/table")
+        else:
+            raise ValueError("the group is not be supported")
+        output_path = Path(f"{outdir}/{group}/{group}_qc.h5ad")
+        output_path.parent.mkdir(parents=True, exist_ok=True) # Create only missing directories
+        adata.write_h5ad(output_path)
+    end = datetime.datetime.now()
+    logging.info("start qc on combined adata run time:"+str((end-start).seconds/3600)+"h")
 
+def step3BatchRun(
+        adataDict:dict[str,ad.AnnData],
+        outdir:str
+):
+    logging.info("start batch normalization and batch remove on combined adata")
+    start = datetime.datetime.now()
+    for group,adata in adataDict.items():
+        if group == 'Intestine':
+            # continue
+            adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=True,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
+            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 35,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
+        elif group == 'Lung':
+            continue
+            adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=True,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
+            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 25,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
+        elif group == 'Muscle':
+            continue
+            adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=False,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
+            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 35,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
+        else:
+            raise ValueError("the group is not be supported")
+        output_path = Path(f"{outdir}/{group}/{group}_class.h5ad")
+        output_path.parent.mkdir(parents=True, exist_ok=True) # Create only missing directories
+        adata.write_h5ad(output_path)
+    end = datetime.datetime.now()
+    logging.info("start batch normalization and batch remove on combined adata run time:"+str((end-start).seconds/3600)+"h")
+
+def step4AnnotateRun(
+        adataDict:dict[str,ad.AnnData],
+        outdir:str
+):
+    logging.info("annotate begin")
+    start = datetime.datetime.now()
+    for group,adata in adataDict.items():
+        if group == "Intestine":
+            # adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
+            adata = handful_annotate(adata,marker_genes=marker_genes_Intestine,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            adata = show_annotation(adata,cluster2annotation=Intestine_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+        elif group == "Lung":
+            continue
+            adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
+            adata = handful_annotate(adata,marker_genes=marker_genes_Lung,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            # adata = show_annotation(adata,cluster2annotation=Lung_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+        elif group == "Muscle":
+            continue
+            adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
+            adata = handful_annotate(adata,marker_genes=marker_genes_Muscle,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            # adata = show_annotation(adata,cluster2annotation=Muscle_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+        else:
+            raise ValueError("group is not be supported")
+        output_path = Path(f"{outdir}/{group}/{group}_annotate.h5ad")
+        output_path.parent.mkdir(parents=True, exist_ok=True) # Create only missing directories
+        adata.write_h5ad(output_path)
+    end = datetime.datetime.now()
+    logging.info("annotate run time:"+str((end-start).seconds/3600)+"h")       
 if __name__ == '__main__':
     
     # ambientRNAQC_GroupCombine = AmbientRNAQC_GroupCombine(marker_genes_Intestine,marker_genes_Lung,marker_genes_Muscle,
     #                          Intestine_annotation,Lung_annotation,Muscle_annotation)
     # ambientRNAQC_GroupCombine.step3GroupRun()
     # ambientRNAQC_GroupCombine.step4GroupRun()
-    readCombine = readCombine(samplesDict,
-                              indir="/disk5/luosg/scRNAseq/output/h5ad",
-                              outdir="/disk5/luosg/scRNAseq/output/combine")
-    readCombine.step1ReadRun()
-    readCombine.step2QCRun()
-    readCombine.step3BatchRun()
-    
+    # readCombine = readCombine(samplesDict,
+    #                           indir="/disk5/luosg/scRNAseq/output/h5ad",
+    #                           outdir="/disk5/luosg/scRNAseq/output/combine",flag="w_h5ad_1")
+    # readCombine.step1ReadRun()
+    # readCombine.step2QCRun()
+    # readCombine.step3BatchRun()
+    adataDict = {
+        "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_deambiendRNA.h5ad"),
+        "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_deambiendRNA.h5ad"),
+        "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_deambiendRNA.h5ad")
+    }
+    step2QCRun(adataDict,outdir="/disk5/luosg/scRNAseq/output/combine")
+    adataDict = {
+        "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_qc.h5ad"),
+        "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_qc.h5ad"),
+        "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_qc.h5ad")
+    }
+    step3BatchRun(adataDict,
+                  outdir="/disk5/luosg/scRNAseq/output/combine")
+    # adataDict = {
+    #     "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_class.h5ad"),
+    #     "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_class.h5ad"),
+    #     "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_class.h5ad")
+    # }
+    # step4AnnotateRun(adataDict,outdir="/disk5/luosg/scRNAseq/output/combine")
 
 
     

@@ -81,6 +81,7 @@ def ambientRNA_Remove(
                 py_corrected_counts = py_corrected_counts.T
             if py_corrected_counts.shape == adata.shape:
                 adata.X = sparse.csr_matrix(py_corrected_counts)
+                adata.layers["deambientRNA"] = adata.X
                 adata.write_h5ad(f"{out_prefix}_deambiendRNA.h5ad")
                 logging.info(f"Successfully injected corrected counts into adata.X with shape {adata.X.shape}. Saved it to {out_prefix}_deambiendRNA.h5ad")
             else:
@@ -89,13 +90,13 @@ def ambientRNA_Remove(
             logging.error(f"Error during R matrix conversion or injection: {e}")
     return adata
 if __name__ == "__main__":
-    infileDict = {"Muscle":"/disk5/luosg/scRNAseq/output/result/h5ad/Muscle_qc.h5ad",
-              "Intestine": "/disk5/luosg/scRNAseq/output/result/h5ad/Intestine_qc.h5ad",
-           "Lung":"/disk5/luosg/scRNAseq/output/result/h5ad/Lung_qc.h5ad"}
-    outdir = "/disk5/luosg/scRNAseq/output/result/h5ad"
+    infileDict = {"Intestine": "/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_raw.h5ad",
+           "Lung":"/disk5/luosg/scRNAseq/output/combine/Lung/Lung_raw.h5ad",
+           "Muscle":"/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_raw.h5ad"}
+    outdir = "/disk5/luosg/scRNAseq/output/combine"
     for tissue,infile in infileDict.items():
         adata = sc.read_h5ad(infile)
-        outfilePrefix = f"{outdir}/{tissue}_qc"
+        outfilePrefix = f"{outdir}/{tissue}/{tissue}"
         logging.info(f"tissue: {tissue}, infile: {infile}, outfile: {outfilePrefix}_deambiendRNA.h5ad")
         adata = sc.read_h5ad(infile)
         ambientRNA_Remove(adata,outfilePrefix,r_script_path="/disk5/luosg/scRNAseq/workflow/scRNAseq/scripts/python/utils/QC.r")
