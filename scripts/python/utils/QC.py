@@ -69,8 +69,8 @@ def lowquality(
     top20_outlier: int = 5,
     mt_outlier: int | None  = 3,
     mt_cutoff: int | None = 8,
-    n_genes_by_counts_cutoff: tuple[int,int] | None = (200,9999999),
-    total_counts_cutoff: tuple[int,int] | None = (500,9999999),
+    n_genes_by_counts_cutoff: tuple[int,int] | None = None,
+    total_counts_cutoff: tuple[int,int] | None = None,
     fig_flag: bool = False,
     fig_dir: str | None = None
 ) -> ad.AnnData:

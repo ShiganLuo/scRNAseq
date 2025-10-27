@@ -248,16 +248,23 @@ def run_scCODA(
 
 
 if __name__ == "__main__":
-    adata = sc.read_h5ad("/disk5/luosg/scRNAseq/output/result1/Intestine_annotate.h5ad")
-    run_scCODA(adata,"/disk5/luosg/scRNAseq/output/result1/Intestine/Compositional/Intestine",
-               cell_type_identifier="celltype",
-               sample_identifier="sample",
-               covariate_obs=["experiment"],
-               feature_name="experiment",
-               formulas=["CKO_vs_WT","E2_vs_CKO","TRA_vs_CKO"])
-    adata = sc.read_h5ad("/disk5/luosg/scRNAseq/output/result1/Lung_annotate.h5ad")
-
-    run_scCODA(adata,"/disk5/luosg/scRNAseq/output/result1/Lung/Compositional/Lung",
+    # adata = sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_annotate.h5ad")
+    # run_scCODA(adata,"/disk5/luosg/scRNAseq/output/combine/Intestine/Compositional/Intestine",
+    #            cell_type_identifier="celltype",
+    #            sample_identifier="sample",
+    #            covariate_obs=["experiment"],
+    #            feature_name="experiment",
+    #            formulas=["CKO_vs_WT","E2_vs_CKO","TRA_vs_CKO"])
+    
+    # adata = sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_annotate.h5ad")
+    # run_scCODA(adata,"/disk5/luosg/scRNAseq/output/combine/Lung/Compositional/Lung",
+    #            cell_type_identifier="celltype",
+    #            sample_identifier="sample",
+    #            covariate_obs=["experiment"],
+    #            feature_name="experiment",
+    #            formulas=["CKO_vs_WT","E2_vs_CKO","TRA_vs_CKO"])
+    adata = sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_annotate.h5ad")
+    run_scCODA(adata,"/disk5/luosg/scRNAseq/output/combine/Lung/Compositional/Muscle",
                cell_type_identifier="celltype",
                sample_identifier="sample",
                covariate_obs=["experiment"],

@@ -46,7 +46,7 @@ marker_genes_Lung = {
     "B cell": ["Pxk","Cd19", "Cd79a", "Ms4a1"],
     "Neutrophil": ["Csf3r", "S100a8", "Ly6g","Il1r2"],
     "Airway epithelial cell": ["Aqp1","Cdh1","Sec14l3"],
-    "Airway goblet cells": ["Muc16","Dusp4","Ggh","Muc5b"],
+    "Airway goblet cells": ["Muc16","Dusp4","Ggh","Muc5b"], # "Airway epithelial cell"的一种亚型
     "Alveolar macrophages": ["Marco","Siglecf","Itgax","Mrc1"],
     "Ciliated cell": ["Foxj1","Ccdc17","Tubb4b","Appl2"],
     "Clara cells": ["Scgb1a1","Cyp4b1","Sftpa1","Ern1"],
@@ -60,7 +60,7 @@ marker_genes_Lung = {
     "Pericyte": ["Pdgfrb", "Rgs5", "Acta2"],
     "monocyte": ["Cfp", "Cd14", "Rhoc","Ccr2"],
     "Airway smooth muscle cells": ["Nog", "Acta2", "Foxf1","Gata5"],  # 平滑肌细胞
-    "T cytotoxic cell": ["Cd8a", "Gzmb", "Trac"],  # 细胞毒性 T 细胞
+    "T cytotoxic cell": ["Cd8a", "Gzmb", "Trac"],  # 细胞毒性 T 细胞 (CD8+)
     "Mki67_proliferating_cells": ["Mki67", "Top2a", "Pcna"],
     "Lymphatic endothelial cell": ["Ccl21a", "Lyve1", "Flt4","Prox1"],
     "Basophil": ["Ccl4", "Npl", "Wrn","Nfil3"],
@@ -93,30 +93,38 @@ Intestine_annotation = {
     "3": "T cytotoxic cell",
     "4": "B cell",
     "5": "Plasma cell",
-    "6": "Enterocyte cell",
-    "7": "Intestinal stem cell",
-    "8": "T cytotoxic cell", # to be determined
-    "9": "Macrophage",
-    "10": "Enterocyte cell",
-    "11": "Goblet",
-    "12": "Tuft"
+    "6": "Enteroendocrine cell",
+    "7": "T cytotoxic cell",
+    "8": "Enterocyte cell",
+    "9": "Intestinal stem cell",
+    "10": "Plasmacytoid dendritic cells",
+    "11": "Macrophage",
+    "12": "Fibroblast",
+    "13": "Paneth",
+    "14": "T cytotoxic cell",
+    "15": "Tuft",
+    "16": "Goblet"
+    
 }
 Lung_annotation = {
-    "0": "endothelial cells",
-    "1": "Neutrophil",
-    "2": "B cell",
-    "3": "type-2 innate lymphoid cell",
-    "4": "smooth muscle cells",
-    "5": "Pulmonary alveolar type II cells",
+    "0": "Macrophage",
+    "1": "endothelial cells",
+    "2": "endothelial cells",
+    "3": "Neutrophil",
+    "4": "T cytotoxic cell(Il7r)",
+    "5": "smooth muscle cells",
     "6": "Fibroblast",
-    "7": "Macrophage",
+    "7": "B cell",
     "8": "Airway goblet cells",
     "9": "endothelial cells",
-    "10": "Macrophage",
-    "11": "endothelial cells",
-    "12": "Macrophage",
-    "13": "Pulmonary alveolar type I cells"
+    "10": "Pulmonary alveolar type II cells",
+    "11": "Macrophage",
+    "12": "Lymphatic endothelial cell",
+    "13": "Macrophage",
+    "14": "Macrophage(Mki67)", 
+    "15": "Pulmonary alveolar type I cells",
 }
+# 肌肉组织是单核测序吗，需要去问一下
 Muscle_annotation = {
     "0":"hybrid IIX/IIB fibers",
     "1":"hybrid IIX/IIB fibers",
@@ -448,20 +456,20 @@ def step2QCRun(adataDict:dict[str,ad.AnnData],
     start = datetime.datetime.now()
     for group,adata in adataDict.items():
         if group == "Intestine":
-            # continue
-            adata = lowquality(adata,group,mt_cutoff=30,mt_outlier=25,low_count_outlier=5,low_gene_outlier=9,top20_outlier=5,
+            continue
+            adata = lowquality(adata,group,mt_cutoff=8,mt_outlier=3,low_count_outlier=5,low_gene_outlier=5,top20_outlier=5,
                             fig_flag = True,fig_dir = f"{outdir}/{group}/QC")
             adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.06,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
                     table_flag=True,table_dir=f"{outdir}/{group}/doublet/table")
         elif group == "Lung":
             continue
-            adata = lowquality(adata,group,mt_cutoff=8,low_count_outlier=3,low_gene_outlier=3,top20_outlier=3,
+            adata = lowquality(adata,group,mt_cutoff=8,mt_outlier=3,low_count_outlier=5,low_gene_outlier=5,top20_outlier=5,
                             fig_flag = True,fig_dir = f"{outdir}/{group}/QC")
-            adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.06,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
+            adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.20,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
                     table_flag=True,table_dir=f"{outdir}/{group}/doublet/table")
         elif group == "Muscle":
-            continue
-            adata = lowquality(adata,group,mt_cutoff=20,mt_outlier=80,low_count_outlier=10,low_gene_outlier=10,top20_outlier=10,
+            # continue
+            adata = lowquality(adata,group,mt_cutoff=30,mt_outlier=10,low_count_outlier=5,low_gene_outlier=5,top20_outlier=5,
                             n_genes_by_counts_cutoff=(200,99999999),total_counts_cutoff=(300,99999999),fig_flag = True,fig_dir = f"{outdir}/{group}/QC")
             adata = Doublet_scrub(adata,group,scrub_estimated_rate = 0.06,fig_flag = True,fig_dir = f"{outdir}/{group}/doublet/plot",
                     table_flag=True,table_dir=f"{outdir}/{group}/doublet/table")
@@ -481,17 +489,17 @@ def step3BatchRun(
     start = datetime.datetime.now()
     for group,adata in adataDict.items():
         if group == 'Intestine':
-            # continue
+            continue
             adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=True,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
-            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 35,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
+            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 25,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
         elif group == 'Lung':
             continue
             adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=True,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
             adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 25,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
         elif group == 'Muscle':
-            continue
-            adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=False,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
-            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 35,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
+            # continue
+            adata = Run_Normalization(adata,group,batch='experiment',n_top_genes=2200,do_scale=True,n_pcs = 100,fig_flag=True,fig_dir = f"{outdir}/{group}/Normalization")
+            adata = Run_batchRemove(adata,group, batch=['experiment'],resolution=0.4,n_pcs= 6,fig_flag=True,fig_dir = f"{outdir}/{group}/BatchRemove")
         else:
             raise ValueError("the group is not be supported")
         output_path = Path(f"{outdir}/{group}/{group}_class.h5ad")
@@ -508,19 +516,20 @@ def step4AnnotateRun(
     start = datetime.datetime.now()
     for group,adata in adataDict.items():
         if group == "Intestine":
+            continue
             # adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
-            adata = handful_annotate(adata,marker_genes=marker_genes_Intestine,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            # adata = handful_annotate(adata,marker_genes=marker_genes_Intestine,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
             adata = show_annotation(adata,cluster2annotation=Intestine_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
         elif group == "Lung":
             continue
             adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
             adata = handful_annotate(adata,marker_genes=marker_genes_Lung,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
-            # adata = show_annotation(adata,cluster2annotation=Lung_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            adata = show_annotation(adata,cluster2annotation=Lung_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
         elif group == "Muscle":
-            continue
-            adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
-            adata = handful_annotate(adata,marker_genes=marker_genes_Muscle,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
-            # adata = show_annotation(adata,cluster2annotation=Muscle_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            # continue
+            # adata = Show_Markers(adata,fig_dir=f"{outdir}/{group}/annotate/plot",table_dir=f"{outdir}/{group}/annotate/table",out=group,fig_flag=True)
+            # adata = handful_annotate(adata,marker_genes=marker_genes_Muscle,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
+            adata = show_annotation(adata,cluster2annotation=Muscle_annotation,fig_dir=f"{outdir}/{group}/annotate/plot",out=group)
         else:
             raise ValueError("group is not be supported")
         output_path = Path(f"{outdir}/{group}/{group}_annotate.h5ad")
@@ -540,25 +549,25 @@ if __name__ == '__main__':
     # readCombine.step1ReadRun()
     # readCombine.step2QCRun()
     # readCombine.step3BatchRun()
-    adataDict = {
-        "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_deambiendRNA.h5ad"),
-        "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_deambiendRNA.h5ad"),
-        "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_deambiendRNA.h5ad")
-    }
-    step2QCRun(adataDict,outdir="/disk5/luosg/scRNAseq/output/combine")
-    adataDict = {
-        "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_qc.h5ad"),
-        "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_qc.h5ad"),
-        "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_qc.h5ad")
-    }
-    step3BatchRun(adataDict,
-                  outdir="/disk5/luosg/scRNAseq/output/combine")
     # adataDict = {
-    #     "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_class.h5ad"),
-    #     "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_class.h5ad"),
-    #     "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_class.h5ad")
+    #     "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_deambiendRNA.h5ad"),
+    #     "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_deambiendRNA.h5ad"),
+    #     "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_deambiendRNA.h5ad")
     # }
-    # step4AnnotateRun(adataDict,outdir="/disk5/luosg/scRNAseq/output/combine")
+    # step2QCRun(adataDict,outdir="/disk5/luosg/scRNAseq/output/combine")
+    # adataDict = {
+    #     "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_qc.h5ad"),
+    #     "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_qc.h5ad"),
+    #     "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_qc.h5ad")
+    # }
+    # step3BatchRun(adataDict,
+    #               outdir="/disk5/luosg/scRNAseq/output/combine")
+    adataDict = {
+        "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_class.h5ad"),
+        "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_class.h5ad"),
+        "Muscle": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Muscle/Muscle_class.h5ad")
+    }
+    step4AnnotateRun(adataDict,outdir="/disk5/luosg/scRNAseq/output/combine")
 
 
     
