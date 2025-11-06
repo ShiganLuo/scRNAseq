@@ -91,8 +91,6 @@ def Run_Normalization(
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
     # annotation need complete var and X; and the raw.X must be normalize
-    # adata.raw = adata
-    adata.raw = adata
     sc.pp.highly_variable_genes(adata, 
                             n_top_genes =  n_top_genes,
                             flavor='seurat',
