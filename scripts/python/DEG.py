@@ -1,6 +1,10 @@
 from pathlib import Path
 import sys
 import os
+from typing import Literal
+os.environ["R_HOME"] = "/home/luosg/miniconda3/envs/scRNAseq_rpy2_1/lib/R"
+os.environ["PATH"] = "/home/luosg/miniconda3/envs/scRNAseq_rpy2_1/bin:" + os.environ.get("PATH", "")
+os.environ["LD_LIBRARY_PATH"] = "/home/luosg/miniconda3/envs/scRNAseq_rpy2_1/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
 basePath = Path(__file__).resolve()
 baseDir = basePath.parent
 sys.path.append(str(baseDir / "utils"))
@@ -19,8 +23,8 @@ import rpy2.rinterface_lib.callbacks
 from rpy2.robjects import pandas2ri
 sc.settings.verbosity = 0
 rpy2.rinterface_lib.callbacks.logger.setLevel(logging.ERROR)
-print(ro.r("R.version.string"))
-os.environ['R_HOME'] = "/home/luosg/miniconda3/envs/scRNAseq_rpy2/lib/R"
+
+
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -225,6 +229,7 @@ def runEdgeRForCell(
         r_coldata_df = ro.conversion.py2rpy(coldata_df)
     
     logging.info("Call R custom function fit_model to conduct differential gene analysis")
+    logging.info(ro.r('Sys.getenv("LD_LIBRARY_PATH")'))
     fit_model_r_func = ro.globalenv['fit_model']
     outs = fit_model_r_func(
         r_expr_df,
@@ -306,6 +311,8 @@ def main(
         fig_dir:str,
         table_dir:str
 ):
+    logging.info(ro.r('.libPaths()'))
+    logging.info(ro.r('system.file(package = "edgeR")'))
     adata_design = DEGDesignGenerate(adata)
     for cell,designs in adata_design.items():
         for design in designs:
@@ -320,18 +327,29 @@ def main(
 def runVolcano(
         infile:str,
         out:str,
-        TE:str = "/ChIP_seq_2/Data/index/Mus_musculus/UCSC/mm39/rmsk_mm39.txt.gz",
+        mode:Literal["TE","Gene","None"] = "TE",
+        TE:str = "/disk5/luosg/Reference/UCSC/mouse/mm39/rmsk_mm39.txt.gz",
         r_script_path: str = "/disk5/luosg/scRNAseq/workflow/scRNAseq/scripts/python/utils/volcano.r"
 ):
-    TEfamily(DEG_file=infile,rmsk_file=TE,out=out)
     logging.info("Begin read DEG result and rmsk file")
     df = pd.read_csv(infile,sep="\t")
     df["gene_name"] = df.index
-    df_TE = pd.read_csv(TE,sep="\t",header=None)
-    keep_vec = df_TE[10]
-    logging.info("Filter out none TE gene_name according to rmsk file")
-    transposon_index_to_keep = df.index.intersection(keep_vec.unique())
-    df_filtered = df.loc[transposon_index_to_keep]
+    logging.info(f"mode: {mode}")
+    if mode == "TE":
+        TEfamily(DEG_file=infile,rmsk_file=TE,out=out)
+        df_TE = pd.read_csv(TE,sep="\t",header=None)
+        keep_vec = df_TE[10]
+        logging.info("Filter out none TE gene_name according to rmsk file")
+        transposon_index_to_keep = df.index.intersection(keep_vec.unique()) #remove duplicated value
+        df_filtered = df.loc[transposon_index_to_keep]
+    elif mode == "Gene":
+        df_TE = pd.read_csv(TE,sep="\t",header=None)
+        except_vec = df_TE[10]
+        logging.info("Filter out TE gene_name according to rmsk file")
+        transposon_index_to_keep = df.index[~df.index.isin(except_vec.unique())]
+        df_filtered = df.loc[transposon_index_to_keep]
+    else:
+        df_filtered = df
     print(df_filtered.head())
     ro.r(f'source("{r_script_path}")')
     logging.info("Convert DataFrame from Python to R ")
@@ -345,32 +363,20 @@ def runVolcano(
 
 
 if __name__ == '__main__':
-    from utils.batch import combine_group
     indir = "/disk5/luosg/scRNAseq/output/h5ad_QC"
-    outdir = "/disk5/luosg/scRNAseq/output/result/h5ad"
+    outdir = "/disk5/luosg/scRNAseq/output/combine"
     samplesDict = { 'Intestine': ['CKO-chang-10XSC3', 'E2-chang-10XSC3', 'TRA-chang-10XSC3', 'WT-chang-10XSC3'],
-        'Lung': ['CKO-fei-10XSC3', 'E2-fei-10XSC3', 'TRA-fei-10XSC3', 'WT-fei-10XSC3'],
-        'Muscle': ['CKO-jirou-10XSC3', 'E2-jirou-10XSC3', 'TRA-jirou-10XSC3', 'WT-jirou-10XSC3']}
-    ### to bulk adata
+        'Lung': ['CKO-fei-10XSC3', 'E2-fei-10XSC3', 'TRA-fei-10XSC3', 'WT-fei-10XSC3']}
+    # 'Muscle': ['CKO-jirou-10XSC3', 'E2-jirou-10XSC3', 'TRA-jirou-10XSC3', 'WT-jirou-10XSC3']
+    ## to bulk adata
     # for group in samplesDict.keys():
-    #     # group_list = []
-    #     # for sample in samplesDict[group]:
-    #     #     infile = f"{indir}/{group}/{sample}_QC.h5ad"
-    #     #     print(infile)
-    #     #     adata = ad.read_h5ad(infile)
-    #     #     group_list.append(adata)
-    #     # adata = combine_group(group_list)
-    #     # adata.write_h5ad(f"{outdir}/{group}_qc.h5ad")
-    #     adataRaw = ad.read_h5ad(f"{outdir}/{group}_qc.h5ad")
-    #     adataAnn = ad.read_h5ad(f"{outdir}/{group}_annotate.h5ad")
-    #     basedir="/disk5/luosg/scRNAseq/output/result/DEG"
+    #     adataRaw = ad.read_h5ad(f"{outdir}/{group}/{group}_qc.h5ad")
+    #     adataAnn = ad.read_h5ad(f"{outdir}/{group}/{group}_annotate.h5ad")
     #     obs_to_keep = ["celltype", "sample"]
-    #     fig_dir = Path(f"{basedir}/{group}/plot")
+    #     fig_dir = Path(f"{outdir}/{group}/DEG")
     #     fig_dir.mkdir(parents=True, exist_ok=True)
     #     adata = makePseudoBulk(adataRaw,adataAnn,fig_dir=str(fig_dir),out=group,fig_flag=True)
-    #     h5ad_group = Path(f"{basedir}/{group}/h5ad")
-    #     h5ad_group.mkdir(parents=True, exist_ok=True)
-    #     adata.write_h5ad(f"{basedir}/{group}/h5ad/{group}_bulk.h5ad")
+    #     adata.write_h5ad(f"{outdir}/{group}/{group}_bulk.h5ad")
 
     #### DEG
 
@@ -387,30 +393,31 @@ if __name__ == '__main__':
     # adataDcit = {}
     # Intestine = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Intestine/h5ad/Intestine_bulk.h5ad")
     # Lung = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Lung/h5ad/Lung_bulk.h5ad")
-    # Muscle = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Muscle/h5ad/Muscle_bulk.h5ad")
+    # # Muscle = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Muscle/h5ad/Muscle_bulk.h5ad")
     # adataDcit['Intestine'] = Intestine
     # adataDcit['Lung'] = Lung
-    # adataDcit['Muscle'] = Muscle
+    # # adataDcit['Muscle'] = Muscle
+    # outdir = Path("/disk5/luosg/scRNAseq/output/combine")
     # for tissue,adata in adataDcit.items():
+    #     fig_dir = outdir / f"{tissue}/DEG/plot"
+    #     fig_dir.mkdir(parents=True, exist_ok=True)
+    #     table_dir = outdir /f"{tissue}/DEG/table"
+    #     table_dir.mkdir(parents=True, exist_ok=True)
     #     main(adata,
-    #         fig_dir=f"/disk5/luosg/scRNAseq/output/result/DEG/{tissue}/plot",
-    #         table_dir=f"/disk5/luosg/scRNAseq/output/result/DEG/{tissue}/table")
+    #         fig_dir=str(fig_dir),
+    #         table_dir=str(table_dir))
 
     # runVolcano("/disk5/luosg/scRNAseq/output/result/DEG/Intestine/table/combined_groupCKO_chang_10XSC3_B_cell-combined_groupWT_chang_10XSC3_B_cell_DEG.tsv"
     #            ,"a.jepg")
     fileStr = 'combined_group*'
-    search_paths = ["/disk5/luosg/scRNAseq/output/result/DEG/Intestine/table",
-                   "/disk5/luosg/scRNAseq/output/result/DEG/Lung/table",
-                   "/disk5/luosg/scRNAseq/output/result/DEG/Muscle/table"]
-    fig_dirs = ["/disk5/luosg/scRNAseq/output/result/DEG/Intestine/plot",
-               "/disk5/luosg/scRNAseq/output/result/DEG/Lung/plot",
-               "/disk5/luosg/scRNAseq/output/result/DEG/Muscle/plot"]
-    for i in range(3):
-        search_path = search_paths[i]
-        files = glob.glob(os.path.join(search_path, fileStr))
-        fig_dir = fig_dirs[i]
+    outdir = Path("/disk5/luosg/scRNAseq/output/combine")
+    for group in samplesDict.keys():
+        search_path = outdir / f"{group}/DEG/table"
+        fig_dir = outdir / f"{group}/DEG/volcano/Gene"
+        fig_dir.mkdir(parents=True,exist_ok=True)
+        files = glob.glob(os.path.join(str(search_path), fileStr))
         for file in files:
             file_name = file.split('.')[0].split('/')[-1]
             outJpeg = f"{fig_dir}/{file_name}"
-            runVolcano(file,outJpeg)
+            runVolcano(file,outJpeg,mode="Gene")
         
