@@ -113,13 +113,10 @@ def makePseudoBulk(
     ####### check new pseduoBulk adata
     logging.info(f"Begin check PseduoBulk adata")
     adata_pb.layers['counts'] = adata_pb.X.copy()
-    print(adata_pb)
-    print(np.max(adata_pb.X))
+
     sc.pp.normalize_total(adata_pb, target_sum=1e4)
     sc.pp.log1p(adata_pb)
     sc.pp.pca(adata_pb)
-    print(np.max(adata_pb.X))
-    print(np.max(adata_pb.layers['counts']))
     ## add log_lib_size
     # If counts is an ndarray or sparse matrix
     counts = adata_pb.layers["counts"]
@@ -132,7 +129,6 @@ def makePseudoBulk(
     # log_lib_size: first convert to numpy array, then log
     log_lib_size = np.log(np.array(adata_pb.obs["lib_size"], dtype=float))
     adata_pb.obs["log_lib_size"] = log_lib_size
-    print(adata_pb.obs["log_lib_size"])
     if fig_flag:
         logging.info(f"Plot PCA plot of column in PseduoBulk adata's obs")
         sc.pl.pca(adata_pb, color=adata_pb.obs, ncols=1, size=300)
@@ -229,7 +225,6 @@ def runEdgeRForCell(
         r_coldata_df = ro.conversion.py2rpy(coldata_df)
     
     logging.info("Call R custom function fit_model to conduct differential gene analysis")
-    logging.info(ro.r('Sys.getenv("LD_LIBRARY_PATH")'))
     fit_model_r_func = ro.globalenv['fit_model']
     outs = fit_model_r_func(
         r_expr_df,
@@ -276,30 +271,30 @@ def DEGDesignGenerate(
         tra_strings = [s for s in cell_list if s.startswith('TRA')]
         e2_strings = [s for s in cell_list if s.startswith('E2')]
 
-        # # 生成 CKO-WT 组合
-        # for cko_s in cko_strings:
-        #     for wt_s in wt_strings:
-        #         combinations.append(f"combined_group{cko_s}-combined_group{wt_s}")
+        # 生成 CKO-WT 组合
+        for cko_s in cko_strings:
+            for wt_s in wt_strings:
+                combinations.append(f"combined_group{cko_s}-combined_group{wt_s}")
                 
-        # # 生成 TRA-CKO 组合
-        # for tra_s in tra_strings:
-        #     for cko_s in cko_strings:
-        #         combinations.append(f"combined_group{tra_s}-combined_group{cko_s}")
-
-        # # 生成 E2-CKO 组合
-        # for e2_s in e2_strings:
-        #     for cko_s in cko_strings:
-        #         combinations.append(f"combined_group{e2_s}-combined_group{cko_s}")
-
-        # 生成TRA-WT组合
+        # 生成 TRA-CKO 组合
         for tra_s in tra_strings:
-            for wt_s in wt_strings:
-                combinations.append(f"combined_group{tra_s}-combined_group{wt_s}")
-        
-        #生成E2-WT组合
+            for cko_s in cko_strings:
+                combinations.append(f"combined_group{tra_s}-combined_group{cko_s}")
+
+        # 生成 E2-CKO 组合
         for e2_s in e2_strings:
-            for wt_s in wt_strings:
-                combinations.append(f"combined_group{e2_s}-combined_group{wt_s}")
+            for cko_s in cko_strings:
+                combinations.append(f"combined_group{e2_s}-combined_group{cko_s}")
+
+        # # 生成TRA-WT组合
+        # for tra_s in tra_strings:
+        #     for wt_s in wt_strings:
+        #         combinations.append(f"combined_group{tra_s}-combined_group{wt_s}")
+        
+        # #生成E2-WT组合
+        # for e2_s in e2_strings:
+        #     for wt_s in wt_strings:
+        #         combinations.append(f"combined_group{e2_s}-combined_group{wt_s}")
         # 将生成的组合列表作为值，以 cell_type 为键存入结果字典
         result_dict[cell_type] = combinations
                 
@@ -350,7 +345,6 @@ def runVolcano(
         df_filtered = df.loc[transposon_index_to_keep]
     else:
         df_filtered = df
-    print(df_filtered.head())
     ro.r(f'source("{r_script_path}")')
     logging.info("Convert DataFrame from Python to R ")
     with localconverter(ro.default_converter + pandas2ri.converter):
@@ -419,5 +413,5 @@ if __name__ == '__main__':
         for file in files:
             file_name = file.split('.')[0].split('/')[-1]
             outJpeg = f"{fig_dir}/{file_name}"
-            runVolcano(file,outJpeg,mode="Gene")
+            runVolcano(file,outJpeg,mode="TE")
         

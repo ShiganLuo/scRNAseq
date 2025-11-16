@@ -90,6 +90,82 @@ def Pre_AddAnnotations2RawCountsAnndata(
 
     return adataRaw
 
+def Pre_AddAnnotations2RawCountsAnndata_FullGene(
+    adataRaw: ad.AnnData,
+    adataAnn: ad.AnnData,
+    annotation_keys: list[str] = ["celltype"],
+    min_overlap_ratio: float = 0.8
+) -> ad.AnnData:
+    """
+    将 adataAnn 的注释信息注入 adataRaw，仅按细胞对齐；
+    保留 adataRaw 的全部基因，删除不匹配细胞。
+    对 varm、layers 形状不匹配项自动跳过。
+
+    Parameters
+    ----------
+    adataRaw : AnnData
+        原始计数数据（将被更新）
+    adataAnn : AnnData
+        含注释和分析结果的 AnnData
+    annotation_keys : list of str
+        要从 adataAnn.obs 复制的列
+    min_overlap_ratio : float
+        最小允许细胞重叠比例，低于该值将报错
+
+    Returns
+    -------
+    AnnData
+        含完整基因、并注入注释后的 AnnData
+    """
+
+    # 检查注释列是否存在
+    missing = [k for k in annotation_keys if k not in adataAnn.obs.columns]
+    if missing:
+        raise KeyError(f"以下注释列在 adataAnn.obs 中不存在: {missing}")
+
+    # 对齐细胞（仅取交集）
+    common_cells = adataRaw.obs_names.intersection(adataAnn.obs_names)
+    overlap_ratio = len(common_cells) / len(adataRaw.obs_names)
+    if overlap_ratio < min_overlap_ratio:
+        raise ValueError(f"细胞重叠比例过低: {overlap_ratio:.2%} < {min_overlap_ratio:.2%}")
+
+    # 只保留公共细胞（保留全部基因）
+    adataRaw = adataRaw[common_cells, :].copy()
+    adataAnn = adataAnn[common_cells, :].copy()
+
+    # === 复制 obs 注释 ===
+    for key in annotation_keys:
+        adataRaw.obs[key] = adataAnn.obs[key]
+
+    # === 尝试复制 obsm / varm / uns / layers ===
+    def safe_copy_attr(src, dest, attr_name, axis_check=None):
+        """安全复制 obsm/varm/layers，形状不匹配直接跳过"""
+        src_attr = getattr(src, attr_name)
+        dest_attr = getattr(dest, attr_name)
+        for key, val in src_attr.items():
+            try:
+                if axis_check == "obs" and val.shape[0] != dest.n_obs:
+                    logging.warning(f"跳过 {attr_name}['{key}'] (obs 维度不匹配)")
+                    continue
+                if axis_check == "var" and val.shape[0] != dest.n_vars:
+                    logging.warning(f"跳过 {attr_name}['{key}'] (var 维度不匹配)")
+                    continue
+                dest_attr[key] = val
+            except Exception as e:
+                logging.warning(f"复制 {attr_name}['{key}'] 时出错: {e}")
+
+    safe_copy_attr(adataAnn, adataRaw, "obsm", axis_check="obs")
+    safe_copy_attr(adataAnn, adataRaw, "varm", axis_check="var")
+    safe_copy_attr(adataAnn, adataRaw, "layers", axis_check=None)
+
+    # === 复制 uns（直接覆盖同名项）===
+    for key, val in adataAnn.uns.items():
+        adataRaw.uns[key] = val
+
+    logging.info(f"成功注入注释 {annotation_keys}，保留 {adataRaw.n_vars} 个基因，{adataRaw.n_obs} 个细胞。")
+    return adataRaw
+
+
 def Pre_FeatureRename(
         adata:ad.AnnData,
         features:list
