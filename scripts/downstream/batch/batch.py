@@ -87,8 +87,7 @@ def Run_Normalization(
     """
     logging.info("begin normalize")
     fig_dir = setup_output_directory(fig_flag, fig_dir, "normalization figures")
-    adata.raw = adata # raw is anndata
-    # adata.layers['count'] = adata.X
+    adata.layers['counts'] = adata.X.copy() # store the raw count matrix
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
     # annotation need complete var and X; and the raw.X must be normalize

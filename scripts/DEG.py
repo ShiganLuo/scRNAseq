@@ -1,6 +1,8 @@
+from ast import pattern
 from pathlib import Path
 import sys
 import os
+import re
 from typing import Literal
 os.environ["R_HOME"] = "/home/luosg/miniconda3/envs/scRNAseq_rpy2_1/lib/R"
 os.environ["PATH"] = "/home/luosg/miniconda3/envs/scRNAseq_rpy2_1/bin:" + os.environ.get("PATH", "")
@@ -37,109 +39,8 @@ logging.basicConfig(
 basePath = Path().resolve()
 baseDir = basePath.parent
 sys.path.append(str(baseDir / "utils"))
-from utils.DEG_pseudo_bulk import Pre_AddAnnotations2RawCountsAnndata,Pre_PseduoBulk,Pre_FeatureRename
+from utils.DEG_pseudo_bulk import Pre_AddAnnotations2RawCountsAnndata,Pre_PseduoBulk,Pre_FeatureRename,makePseudoBulk
 
-def makePseudoBulk(
-    adataRaw:ad.AnnData,
-    adataAnn:ad.AnnData,
-    fig_dir: str,
-    out:str,
-    fig_flag:bool=False,
-    obs_to_keep:list = ['sample',"celltype"]
-):
-    """Generates a pseudo-bulk AnnData object from single-cell data.
-
-    This function processes single-cell data by integrating annotations, creating 
-    pseudo-bulk samples, and performing necessary standardization steps for 
-    downstream differential gene expression analysis.
-
-    Parameters
-    ----------
-    adataRaw
-        An AnnData object containing raw single-cell count data.
-    adataAnn
-        An AnnData object with cell type annotations in its `obs` attribute.
-    fig_dir
-        The directory to save the generated PCA plot.
-    out
-        The filename (without extension) for the saved PCA plot.
-    fig_flag
-        A boolean flag to determine whether to generate and save a PCA plot.
-        Defaults to `False`.
-    obs_to_keep
-        A list of observation columns to be included in the final pseudo-bulk object.
-        Defaults to `['sample', 'celltype']`.
-
-    Returns
-    -------
-    ad.AnnData
-        The pseudo-bulk AnnData object containing aggregated counts, normalized data,
-        and relevant observation metadata, ready for analysis.
-    
-    Notes
-    -----
-    - The function first combines annotations from `adataAnn` with the raw counts
-      in `adataRaw`.
-    - It renames characters in specified observation columns to ensure compatibility
-      with tools like edgeR.
-    - Pseudo-bulk aggregation is performed for each unique cell type.
-    - The resulting pseudo-bulk data is normalized, log-transformed, and scaled
-      for PCA.
-    - Library size and log library size are added to `adata.obs`.
-    - If `fig_flag` is `True`, a PCA plot is generated and saved for quality control.
-    """
-    logging.info(f"Begin make PseduoBulk adata!")
-    ######## migrate celltyep annotation to adataRaw
-    logging.info(f'begin Migrate celltype annotation from adataAnn to adataRaw and change name in {obs_to_keep} for edgeR')
-    adata = Pre_AddAnnotations2RawCountsAnndata(adataRaw,adataAnn)
-    # edgeR can't identify " " and "+"
-    adata = Pre_FeatureRename(adata,obs_to_keep)
-    logging.info(f"Migrate complete! New adata {adata}")
-    logging.info(f"The max count of adata : {np.max(adata.X)}")
-    ######## PseudoBulk
-    logging.info(f"Make PseudoBulk adata formally")
-    adata.obs["sample"] = adata.obs["sample"].astype("category")
-    adata.obs["celltype"] = adata.obs["celltype"].astype("category")
-    celltype = adata.obs["celltype"].cat.categories[0]
-    adata_list = []
-    for i, celltype in enumerate(adata.obs["celltype"].cat.categories[0:]):
-        print(
-            f'Processing {celltype} ({i+2} out of {len(adata.obs["celltype"].cat.categories)})...'
-        )
-        adata_cell_type = Pre_PseduoBulk(adata, celltype, obs_to_keep=obs_to_keep,replicates_per_patient=2)
-        adata_list.append(adata_cell_type)
-    adata_pb = ad.concat(adata_list,index_unique=None)
-    logging.info(f"PseudoBulk adata make complete Preliminarily")
-    ####### check new pseduoBulk adata
-    logging.info(f"Begin check PseduoBulk adata")
-    adata_pb.layers['counts'] = adata_pb.X.copy()
-
-    sc.pp.normalize_total(adata_pb, target_sum=1e4)
-    sc.pp.log1p(adata_pb)
-    sc.pp.pca(adata_pb)
-    ## add log_lib_size
-    # If counts is an ndarray or sparse matrix
-    counts = adata_pb.layers["counts"]
-    if hasattr(counts, "toarray"):
-        counts = counts.toarray()
-
-    lib_size = np.sum(counts, axis=1).flatten()
-    adata_pb.obs["lib_size"] = lib_size
-
-    # log_lib_size: first convert to numpy array, then log
-    log_lib_size = np.log(np.array(adata_pb.obs["lib_size"], dtype=float))
-    adata_pb.obs["log_lib_size"] = log_lib_size
-    if fig_flag:
-        logging.info(f"Plot PCA plot of column in PseduoBulk adata's obs")
-        sc.pl.pca(adata_pb, color=adata_pb.obs, ncols=1, size=300)
-        plt.savefig(f"{fig_dir}/{out}_obsPCA.png")
-    
-    logging.info(f"After normalizing and log1p; The max count of adata:{np.max(adata_pb.X)}")
-    adata_pb.X = adata_pb.layers['counts'].copy()
-    logging.info(f"After copying layers 'counts'; The max count of adata:{np.max(adata_pb.X)}")
-    logging.info(f"PseduoBulk adata check complete !")
-    logging.info(f"PseduoBulk adata make complete!")
-    return adata_pb
 
 def runEdgeRForCell(
     adata: ad.AnnData,
@@ -286,15 +187,15 @@ def DEGDesignGenerate(
             for cko_s in cko_strings:
                 combinations.append(f"combined_group{e2_s}-combined_group{cko_s}")
 
-        # # 生成TRA-WT组合
-        # for tra_s in tra_strings:
-        #     for wt_s in wt_strings:
-        #         combinations.append(f"combined_group{tra_s}-combined_group{wt_s}")
+        # 生成TRA-WT组合
+        for tra_s in tra_strings:
+            for wt_s in wt_strings:
+                combinations.append(f"combined_group{tra_s}-combined_group{wt_s}")
         
-        # #生成E2-WT组合
-        # for e2_s in e2_strings:
-        #     for wt_s in wt_strings:
-        #         combinations.append(f"combined_group{e2_s}-combined_group{wt_s}")
+        #生成E2-WT组合
+        for e2_s in e2_strings:
+            for wt_s in wt_strings:
+                combinations.append(f"combined_group{e2_s}-combined_group{wt_s}")
         # 将生成的组合列表作为值，以 cell_type 为键存入结果字典
         result_dict[cell_type] = combinations
                 
@@ -312,12 +213,21 @@ def main(
     for cell,designs in adata_design.items():
         for design in designs:
             logging.info(f"{cell}:{design}")
-            expr_df,coldata_df = runEdgeRForCell(adata,
-                                        cell = cell,
-                                        fig_dir=fig_dir,
-                                        table_dir=table_dir,
-                                        out=design,
-                                        DEGDesign=design)
+            pattern = r'combined_group(.*)_10XSC3_(.*)-combined_group(.*)_10XSC3_(.*)_DEG'
+            match = re.match(pattern, design)
+            if match:
+                experiment = match.group(1)
+                control = match.group(3)
+                cell = match.group(2)
+                outPrefix = f"{cell}_{experiment}_vs_{control}"
+                expr_df,coldata_df = runEdgeRForCell(adata,
+                                            cell = cell,
+                                            fig_dir=fig_dir,
+                                            table_dir=table_dir,
+                                            out=outPrefix,
+                                            DEGDesign=design)
+            else:
+                raise ValueError(f"DEGDesign {design} does not match expected pattern.")
 
 def runVolcano(
         infile:str,
@@ -352,12 +262,12 @@ def runVolcano(
     
     logging.info("Call R custom function volcano to plot")
     volcano_r_func = ro.globalenv['volcano']
-    volcano_r_func(r_df,outjpeg = f"{out}.jpeg")
+    volcano_r_func(r_df,outjpeg = f"{out}_{mode}.jpeg")
     
 
 
 if __name__ == '__main__':
-    indir = "/disk5/luosg/scRNAseq/output/h5ad_QC"
+    # indir = "/disk5/luosg/scRNAseq/output/h5ad_QC"
     outdir = "/disk5/luosg/scRNAseq/output/combine"
     samplesDict = { 'Intestine': ['CKO-chang-10XSC3', 'E2-chang-10XSC3', 'TRA-chang-10XSC3', 'WT-chang-10XSC3'],
         'Lung': ['CKO-fei-10XSC3', 'E2-fei-10XSC3', 'TRA-fei-10XSC3', 'WT-fei-10XSC3']}
@@ -369,49 +279,55 @@ if __name__ == '__main__':
     #     obs_to_keep = ["celltype", "sample"]
     #     fig_dir = Path(f"{outdir}/{group}/DEG")
     #     fig_dir.mkdir(parents=True, exist_ok=True)
-    #     adata = makePseudoBulk(adataRaw,adataAnn,fig_dir=str(fig_dir),out=group,fig_flag=True)
+    #     adata = makePseudoBulk(adataRaw,adataAnn,fig_dir=str(fig_dir),out=group,fig_flag=True,obs_to_keep=obs_to_keep,raw_layers = "raw")
     #     adata.write_h5ad(f"{outdir}/{group}/{group}_bulk.h5ad")
 
-    #### DEG
-
-
-    # adata = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Intestine/h5ad/Intestine_bulk.h5ad")
-    # expr_df,coldata_df = runEdgeRForCell(adata,
-    #                                      cell = "B_cell",
-    #                                      fig_dir="/disk5/luosg/scRNAseq/output/result/DEG/Intestine/plot",
-    #                                      table_dir="/disk5/luosg/scRNAseq/output/result/DEG/Intestine/table",
-    #                                      out="Intestine_B",
-    #                                      DEGDesign="combined_groupCKO_chang_10XSC3_B_cell-combined_groupWT_chang_10XSC3_B_cell")
-    
-    # DEGDesignGenerate(Intestine)
-    # adataDcit = {}
-    # Intestine = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Intestine/h5ad/Intestine_bulk.h5ad")
-    # Lung = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Lung/h5ad/Lung_bulk.h5ad")
-    # # Muscle = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Muscle/h5ad/Muscle_bulk.h5ad")
-    # adataDcit['Intestine'] = Intestine
-    # adataDcit['Lung'] = Lung
-    # # adataDcit['Muscle'] = Muscle
-    # outdir = Path("/disk5/luosg/scRNAseq/output/combine")
-    # for tissue,adata in adataDcit.items():
-    #     fig_dir = outdir / f"{tissue}/DEG/plot"
-    #     fig_dir.mkdir(parents=True, exist_ok=True)
-    #     table_dir = outdir /f"{tissue}/DEG/table"
-    #     table_dir.mkdir(parents=True, exist_ok=True)
-    #     main(adata,
-    #         fig_dir=str(fig_dir),
-    #         table_dir=str(table_dir))
-
-    # runVolcano("/disk5/luosg/scRNAseq/output/result/DEG/Intestine/table/combined_groupCKO_chang_10XSC3_B_cell-combined_groupWT_chang_10XSC3_B_cell_DEG.tsv"
-    #            ,"a.jepg")
-    fileStr = 'combined_group*'
+    # # #### DEG
+    adataDcit = {}
+    Intestine = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Intestine/h5ad/Intestine_bulk.h5ad")
+    Lung = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Lung/h5ad/Lung_bulk.h5ad")
+    # Muscle = ad.read_h5ad("/disk5/luosg/scRNAseq/output/result/DEG/Muscle/h5ad/Muscle_bulk.h5ad")
+    adataDcit['Intestine'] = Intestine
+    adataDcit['Lung'] = Lung
+    # adataDcit['Muscle'] = Muscle
     outdir = Path("/disk5/luosg/scRNAseq/output/combine")
-    for group in samplesDict.keys():
-        search_path = outdir / f"{group}/DEG/table"
-        fig_dir = outdir / f"{group}/DEG/volcano/Gene"
-        fig_dir.mkdir(parents=True,exist_ok=True)
-        files = glob.glob(os.path.join(str(search_path), fileStr))
-        for file in files:
-            file_name = file.split('.')[0].split('/')[-1]
-            outJpeg = f"{fig_dir}/{file_name}"
-            runVolcano(file,outJpeg,mode="TE")
+    for tissue,adata in adataDcit.items():
+        fig_dir = outdir / f"{tissue}/DEG/plot"
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        table_dir = outdir /f"{tissue}/DEG/table"
+        table_dir.mkdir(parents=True, exist_ok=True)
+        main(adata,
+            fig_dir=str(fig_dir),
+            table_dir=str(table_dir))
+
+
+    # fileStr = 'combined_group*'
+    # outdir = Path("/disk5/luosg/scRNAseq/output/combine")
+    # for group in samplesDict.keys():
+    #     search_path = outdir / f"{group}/DEG/table"
+    #     fig_dir = outdir / f"{group}/DEG/volcano/"
+    #     fig_dir.mkdir(parents=True,exist_ok=True)
+    #     files = glob.glob(os.path.join(str(search_path), fileStr))
+    #     for file in files:
+    #         file_name = file.split('.')[0].split('/')[-1]
+    #         pattern = r'combined_group(.*)_10XSC3_(.*)-combined_group(.*)_10XSC3_(.*)_DEG'
+    #         match = re.match(pattern, file_name)
+    #         if match:
+    #             experiment = match.group(1)
+    #             control = match.group(3)
+    #             cell = match.group(2)
+
+    #             Gene_dir = fig_dir / "Gene"
+    #             Gene_dir.mkdir(parents=True,exist_ok=True)
+    #             outJpeg_Gene = f"{Gene_dir}/{cell}_{experiment}_vs_{control}"
+    #             runVolcano(file,outJpeg_Gene,mode="Gene")
+
+    #             TE_dir = fig_dir / "TE"
+    #             TE_dir.mkdir(parents=True,exist_ok=True)
+    #             outJpeg_TE = f"{TE_dir}/{cell}_{experiment}_vs_{control}"
+    #             runVolcano(file,outJpeg_TE,mode="TE")
+    #         else:
+    #             raise ValueError(f"Filename {file_name} does not match expected pattern.")
+    #         # outJpeg = f"{fig_dir}/{file_name}"
+    #         # runVolcano(file,outJpeg,mode="TE")
         

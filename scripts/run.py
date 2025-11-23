@@ -10,11 +10,11 @@ basePath = Path(__file__).resolve()
 baseDir = basePath.parent
 sys.path.append(str(baseDir / "utils"))
 import logging
-from utils.read import scTERead
-from utils.QC import lowquality,Doublet_scrub
-from utils.batch import Run_Normalization,Run_batchRemove, combine_group
+from workflow.scRNAseq.scripts.downstream.read import scTERead
+from workflow.scRNAseq.scripts.downstream.qc.QC import lowquality,Doublet_scrub
+from workflow.scRNAseq.scripts.downstream.batch.batch import Run_Normalization,Run_batchRemove, combine_group
 # from utils.annotation import auto_omi
-from utils.annotation import Show_Markers,handful_annotate,show_annotation
+from workflow.scRNAseq.scripts.downstream.annotation.annotation import Show_Markers,handful_annotate,show_annotation
 logging.basicConfig(
 	level=logging.INFO,
 	format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

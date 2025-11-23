@@ -74,9 +74,11 @@ def detectWrongCluster(
     suspects[['sample','experiment','leiden','center_dist_z',f'knn_purity_k{k}','silhouette','miscluster_score']].to_csv('suspect_cells.csv')
 
     # ==== 6️⃣ 可视化 ====
-    sc.pl.umap(
+    fig = sc.pl.umap(
         adata,
         color=['leiden', 'miscluster_score', 'is_suspect', 'pct_counts_mt'],
         size=20,
-        cmap='viridis'
+        cmap='viridis',
+        return_fig=True
     )
+    return fig

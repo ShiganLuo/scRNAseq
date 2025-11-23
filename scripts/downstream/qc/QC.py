@@ -130,7 +130,7 @@ def lowquality(
     """
     logging.info(f"{sample}'s low quality cells filtering start")
     fig_dir = setup_output_directory(fig_flag, fig_dir, "figures")
-
+    adata.raw = adata.copy() # Store raw version of X and var as .raw.X and .raw.var.
     logging.info(f"Number of cells originally: {adata.n_obs}")
     ### metrix caculate
     # human mitcondronial gene most start with MT-, but mouse's most start with mt-

@@ -35,11 +35,8 @@ def ambientRNA_Remove(
 
     logging.info("chekck whether has toarray methods")
     if hasattr(X, "toarray"):
-        adata.layers["raw"] = adata.X
         logging.info("convert it to dense matrix to create dense dataframe")
         X = X.toarray()
-    else:
-        adata.layers["raw"] = sparse.csr_matrix(adata.X)
     
     logging.info("create dataframe AnnData (Cells x Genes) -> R (Genes x Cells)")
     df_count = pd.DataFrame(

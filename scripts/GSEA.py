@@ -8,7 +8,7 @@ import sys
 basePath = Path(__file__).resolve()
 baseDir = basePath.parent
 sys.path.append(str(baseDir / "utils"))
-from utils.GSEA import GSEAPlot
+from workflow.scRNAseq.scripts.downstream.condition.GSEA import GSEAPlot
 adata_dict = {
     "Intestine": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Intestine/Intestine_annotate.h5ad"),
     "Lung": sc.read_h5ad("/disk5/luosg/scRNAseq/output/combine/Lung/Lung_annotate.h5ad")
